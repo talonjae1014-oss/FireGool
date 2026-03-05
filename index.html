@@ -151,7 +151,7 @@
   .info-item.full { grid-column: span 2; }
   .info-label { display: block; color: var(--accent); font-size: 0.75rem; margin-bottom: 5px; font-weight: bold; }
   
-  /* [수정] 스킬, 장비, 팁 등에 띄어쓰기(줄바꿈) 적용되도록 처리 */
+  /* 스킬, 장비, 팁 등에 띄어쓰기(줄바꿈) 적용되도록 처리 */
   .pre-wrap-text { white-space: pre-wrap; word-break: break-word; }
 
   .dropdown-list {
@@ -356,7 +356,11 @@
       <div id="userKeyList" style="max-height:150px; overflow-y:auto; margin-bottom:15px;"></div>
       
       <div style="color:var(--accent); margin-bottom:5px; border-top:1px solid rgba(255,255,255,0.1); padding-top:15px;">👥 유저 승패 수정</div>
-      <div id="adminUserList" style="max-height:200px; overflow-y:auto;"></div>
+      <div id="adminUserList" style="max-height:200px; overflow-y:auto; margin-bottom:20px;"></div>
+      
+      <div style="border-top: 2px dashed #ff4757; padding-top: 15px; text-align: center;">
+        <button onclick="resetSeason()" style="background: linear-gradient(135deg, #c0392b, #8e44ad); color: white; width: 100%; padding: 15px; font-size: 1.05rem; box-shadow: 0 0 15px rgba(192, 57, 43, 0.6); text-shadow: 0 2px 4px rgba(0,0,0,0.5);">⚠️ [위험] 시즌 초기화 (모든 승패 기록 삭제)</button>
+      </div>
     </div>
   </div>
 </div>
@@ -762,7 +766,7 @@ window.selectAttack = (dk, ak) => {
     document.getElementById("cardRing").textContent = d.ring || "-";
     document.getElementById("cardPet").textContent = d.pet || "-";
     
-    // 줄바꿈이 정상적으로 표시되도록 textContent 사용 (CSS pre-wrap-text 처리 완료)
+    // 줄바꿈이 정상적으로 표시되도록 textContent 사용
     document.getElementById("cardFormation").textContent = d.formation || "-";
     document.getElementById("cardArmor").textContent = d.armor || "-";
     document.getElementById("cardSkill").textContent = d.skill || "-";
@@ -1040,7 +1044,7 @@ let pveCurrentCategory = "siege";
 let pveCurrentId = "";
 let pveCurrentType = ""; // build or turn_build
 
-// 파괴신 턴/빌드 복합 선택 및 강림 빌드 형식으로 변경
+// 파괴신 1라/2라 분리 및 턴/빌드 복합 선택
 const PVE_DATA_KEYS = {
   siege: [
     {id:"mon", name:"월요일 공성전", type:"build"}, 
@@ -1052,7 +1056,8 @@ const PVE_DATA_KEYS = {
     {id:"sun", name:"일요일 공성전", type:"build"}
   ],
   advent: [
-    {id:"destruct", name:"🔥 파괴신", type:"turn_build", burn:true}, 
+    {id:"destruct1", name:"🔥 파괴신 1라", type:"turn_build", burn:true}, 
+    {id:"destruct2", name:"🔥 파괴신 2라", type:"turn_build", burn:true}, 
     {id:"teo", name:"태오", type:"build"}, 
     {id:"kyle", name:"카일", type:"build"},
     {id:"yeonhee", name:"연희", type:"build"}, 
@@ -1098,7 +1103,7 @@ window.loadPveData = (cat, id, title, type) => {
   turnArea.style.display = 'none';
   buildArea.style.display = 'none';
 
-  // 파괴신: 턴과 빌드 모두 선택
+  // 파괴신 1라, 2라: 턴과 빌드 모두 선택
   if (type === 'turn_build') {
     turnArea.style.display = 'block';
     buildArea.style.display = 'block';
@@ -1423,6 +1428,36 @@ window.adjustScore = async (nick, type, delta) => {
   }
 };
 
+// [신규] 유저 개별 승패 로그 삭제 기능 (답지 미영향)
+window.deleteUserLogs = async (nick) => {
+  if(!confirm("탈퇴한 길드원의 승패 기록을 삭제하겠습니까?\n답지 승패에는 영향을 끼치지 않습니다.")) return;
+  
+  const snap = await get(ref(db, "logs"));
+  if (snap.exists()) {
+    const updates = {};
+    Object.entries(snap.val()).forEach(([key, val]) => {
+      if (val.nick === nick) {
+        updates[key] = null; // 해당 로그 삭제
+      }
+    });
+    
+    if (Object.keys(updates).length > 0) {
+      await update(ref(db, "logs"), updates);
+      alert(`${nick} 님의 승패 기록이 삭제되었습니다.`);
+    } else {
+      alert(`${nick} 님의 승패 기록이 없습니다.`);
+    }
+  }
+};
+
+// [신규] 시즌 초기화 (전체 승패 로그 삭제 기능 - 답지 미영향)
+window.resetSeason = async () => {
+  if(!confirm("모든 길드원들의 승패 기록이 삭제됩니다.\n단 0승 0패로만 되므로 탈퇴한 길드원은 직접 삭제해주세요.")) return;
+  
+  await remove(ref(db, "logs"));
+  alert("시즌 초기화가 완료되었습니다. 모든 승패 기록이 리셋되었습니다.");
+};
+
 function renderAdminUserList() {
   const listDiv = document.getElementById("adminUserList"); listDiv.innerHTML = "";
   const stat = {};
@@ -1442,6 +1477,7 @@ function renderAdminUserList() {
       const val = stat[nick];
       const div = document.createElement("div");
       div.className = "user-stat-row";
+      // 개별 삭제 버튼 UI 추가
       div.innerHTML = `
         <span style="font-weight:bold; width:80px; color:var(--text-main);">${nick}</span>
         <div style="display:flex; align-items:center; gap:5px;">
@@ -1451,6 +1487,7 @@ function renderAdminUserList() {
           <span style="color:#EF5350; font-size:0.8rem; margin-left:5px;">패:${val.l}</span>
           <button class="mini-btn bg-blue" onclick="adjustScore('${nick}','lose',1)">+</button>
           <button class="mini-btn bg-red" onclick="adjustScore('${nick}','lose',-1)">-</button>
+          <button class="mini-btn" style="background:#444; color:#fff; border:1px solid #666; margin-left:10px;" onclick="deleteUserLogs('${nick}')">삭제</button>
         </div>
       `;
       listDiv.appendChild(div);
